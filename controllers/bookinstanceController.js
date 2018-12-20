@@ -1,7 +1,9 @@
 // 书本实例控制器
 var BookInstance = require('../models/bookinstance');
-var Book = require('../models/book')
-var async = require('async')
+var Book = require('../models/book');
+let { body, validationResult } = require('express-validator/check');
+let { sanitizeBody } = require('express-validator/filter');
+var async = require('async');
 
 // 获取所有书本实例的列表，填充相关的书本信息，然后将列表传递给模板以呈现
 exports.bookinstance_list = function(req, res, next) {
@@ -13,7 +15,7 @@ exports.bookinstance_list = function(req, res, next) {
     });
 };
 
-exports.bookinstance_detail = function(req, res) {
+exports.bookinstance_detail = function(req, res, next) {
   BookInstance.findById(req.params.id)
     .populate('book')
     .exec(function(err, bookinstance) {
@@ -27,13 +29,45 @@ exports.bookinstance_detail = function(req, res) {
     });
 };
 
-exports.bookinstance_create_get = function(req, res) {
-  res.send('NO IMPLEMENTED: bookinstance create get.');
+exports.bookinstance_create_get = function(req, res, next) {
+  Book.find({}, 'title')
+    .exec(function(err, books) {
+      if (err) { return next(err); }
+      res.render('bookinstance_form', { title: 'Create Bookinstance', book_list: books });
+    })
 };
 
-exports.bookinstance_create_post = function(req, res) {
-  res.send('NO IMPLEMENTED: bookinstance create post.');
-};
+exports.bookinstance_create_post = [
+  body('book', 'book must be specified.').isLength({ min: 1 }).trim(),
+  body('imprint', 'imprint must be specified.').isLength({ min: 1 }).trim(),
+  body('due_back', 'due_back must be specified.').optional({ checkFalsy: true }).isISO8601(),
+
+  sanitizeBody('book').trim().escape(),
+  sanitizeBody('imprint').trim().escape(),
+  sanitizeBody('status').trim().escape(),
+  sanitizeBody('due_back').trim().escape(),
+  function(req, res, next) {
+    var errors = validationResult(req);
+    var bookinstance = new BookInstance({
+      book: req.body.book,
+      imprint: req.body.imprint,
+      status: req.body.status,
+      due_back: req.body.due_back
+    });
+    if (!errors.isEmpty()) {
+      Book.find({}, 'title')
+        .exec(function(err, books) {
+          if (err) { return next(err); }
+          res.render('bookinstance_form', { title: 'Create bookinstance', book_list: books, bookinstance: bookinstance, selected_book: bookinstance.book._id, errors: errors.array() });
+        });
+    } else {
+      bookinstance.save(function(err) {
+        if (err) { return next(err); }
+        res.redirect(bookinstance.url);
+      })
+    }
+  }
+];
 
 exports.bookinstance_delete_get = function(req, res) {
   res.send('NO IMPLEMENTED: bookinstance delete get.');
